@@ -19,7 +19,6 @@ CancerSD is based on the Python program language. For the model training, We use
 ## Dependencies
 * Python 3 >= 3.8
 * PyTorch >= 1.12
-* Matplotlib >= 3.6
 * NumPy >= 1.23
 * Pandas >= 1.5
 * Scikit-learn >= 1.3
