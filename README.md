@@ -29,5 +29,10 @@ In this repository, you can find the following folders:
 ## Usage
 
 ### Downloading TCGA Data
-To download omics data and other clinical metadata, please refer to the ![NIH Genomic Data Commons Data Portal](https://portal.gdc.cancer.gov/) and the ![cBioPortal](https://www.cbioportal.org/).
+To download omics data and other clinical metadata, please refer to the [NIH Genomic Data Commons Data Portal](https://portal.gdc.cancer.gov/) and the [cBioPortal](https://www.cbioportal.org/).
 
+### Runing Experiments
+Experiments can be executed through the script main.py, the basic usage to run a cancer subtype diagnosis task on the STAD dataset is as follows:
+```
+python main.py
+```
