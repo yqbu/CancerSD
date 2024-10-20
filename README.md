@@ -12,7 +12,7 @@ Our CancerSD has the advantage to accurately diagnose cancer subtypes by leverag
 (ii) Then, it constructs the missing omics imputation network to reliably impute missing omics of samples, which consists of an encoder, a projector, and multiple omics-specific generators. After that, it defines Contrastive Learning tasks alongside \revised{Masking-And-Reconstruction (MAR)} tasks to optimize this imputation network. The former explores the consistent patient representations across different augmented views, while the latter utilizes such representations to impute the missing omics data.
 (iii) Next, it introduces the cancer subtype diagnosis network that fuses available and imputed omics data to calculate the probability of each patient suffered from a particular subtype. 
 (iv) To enable model optimization on the scarce in-house clinical samples, CancerSD further proposes a knowledge transfer network to extract meta-knowledge from external datasets. 
-We wanted to remark that the first three networks are collectively referred as CancerSD backbone or the base learner (CancerSD_b), while the last network is designated as the meta learner (CancerSD_m).
+We wanted to remark that the first three networks are collectively referred as CancerSD backbone or the base learner ($CancerSD_b$), while the last network is designated as the meta learner ($CancerSD_m$).
 
 CancerSD is based on the Python program language. For the model training, We used an Nvidia GeForce RTX 3090 (24G) GPU that hosted on a Ubuntu 22.04.1 LTS machine with Intel Xeon Gold 6248R CPUs and 512GB memory. The version of CUDA is 11.7 and that of PyTorch is 1.13.1. When the GPU's memory is not enough to support the running of the tool, we suggest simplifying the network structure.
 
