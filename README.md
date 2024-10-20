@@ -26,6 +26,38 @@ CancerSD is based on the Python program language. For the model training, We use
 ## Contents of this repository
 In this repository, you can find the following folders:
 
+```
+CancerSD
+│  graphical_abstract.pdf
+│  README.md
+│  
+├─Codes
+│  │  auxiliary.py
+│  │  loss.py
+│  │  main.py
+│  │  meta_main.py
+│  │  model.py
+│  │  utils.py
+│  │  
+│  └─data_process
+│          process_GEO.py
+│          process_TCGA.py
+│          process_utils.py
+│          
+└─Data
+    │  cpg_to_genes.json
+    │  
+    └─STAD
+            methylation.csv
+            miRNA.csv
+            miRNA_max_min.csv
+            mRNA_max_min.csv
+            patient_diagnose.csv
+            patient_lack_methylation.npy
+            patient_lack_miRNA.npy
+            patient_lack_mRNA.npy
+```
+
 ## Usage
 
 ### Downloading TCGA Data
