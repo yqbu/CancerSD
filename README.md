@@ -28,3 +28,6 @@ In this repository, you can find the following folders:
 
 ## Usage
 
+### Downloading TCGA Data
+To download omics data and other clinical metadata, please refer to the ![NIH Genomic Data Commons Data Portal](https://portal.gdc.cancer.gov/) and the ![cBioPortal](https://www.cbioportal.org/).
+
