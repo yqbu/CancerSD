@@ -45,14 +45,15 @@ CancerSD
 │          process_utils.py
 │          
 └─Data
-    │  cpg_to_genes.json
+    │  cpg_to_genes.json  # map the CpG site to genes
     │  
     └─STAD
             methylation.csv
             miRNA.csv
-            miRNA_max_min.csv
-            mRNA_max_min.csv
-            patient_diagnose.csv
+            mRNA.zip  # please unzip this file first
+            miRNA_max_min.csv  # max-min normalization for miRNA expression profile
+            mRNA_max_min.csv  # max-min normalization for mRNA expression profile
+            patient_diagnose.csv  # clinical information for patients
             patient_lack_methylation.npy
             patient_lack_miRNA.npy
             patient_lack_mRNA.npy
