@@ -1,5 +1,6 @@
 # Cancer molecular subtyping using limited multi-omics data with missingness
-CancerSD is an end-to-end model designed for **Cancer** **S**ubtype **D**iagnosis using limited weakly-paired multi-omics data
+CancerSD is an end-to-end model designed for **Cancer** **S**ubtype **D**iagnosis using limited weakly-paired multi-omics data.
+There are more interesting and valuable works available, and you can visit the official website of our lab ([Intelligent Data Engineering and Analytics, IDEA](https://www.sdu-idea.cn/index#/index)) for a more detailed understanding.
 
 ## Introduction
 
