@@ -23,7 +23,7 @@ def train(param_lr, data_loader, epoch):
             samples = samples.to(device)
             labels = labels.to(device)
 
-            complete, incomplete, available, origins, projections, reconstructed, generated, diagnoses = gcc(samples)
+            complete, incomplete, available, origins, projections, reconstructed, generated, diagnoses = model(samples)
 
             generation_loss = torch.zeros(1).squeeze().to(device)
             if complete.numel() >= 1:
