@@ -102,7 +102,7 @@ if __name__ == '__main__':
         Loss_diagnosis = nn.CrossEntropyLoss(weight=weight)
         Loss_base = BaseLoss(coefficient=[1, 1, 1]).to(device)
 
-        train_dataloader = DataLoader(train_dataset, batch_size=20, shuffle=True, num_workers=4, pin_memory=True,
+        train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=True, num_workers=4, pin_memory=True,
                                       drop_last=True)
         train([
             {'params': model.encoder.parameters(), 'lr': model_kwargs['encoder_lr']},
@@ -112,38 +112,71 @@ if __name__ == '__main__':
         ], train_dataloader, model_kwargs['total_epoch'])
 
         model.toggle_stage('test')
-        test_dataloader = DataLoader(test_dataset, len(test_dataset), shuffle=True)
+        test_dataloader = DataLoader(test_dataset, batch_size=10, shuffle=False)
 
-        corrects = [0.0] * dataset.num_subtype
-        totals = [0.0] * dataset.num_subtype
+        corrects = np.zeros(dataset.num_subtype, dtype=np.float64)
+        totals = np.zeros(dataset.num_subtype, dtype=np.float64)
+
+        all_targets = []
+        all_predictions = []
+        all_probabilities = []
+        all_similarities = []
 
         for patients, subtypes in test_dataloader:
             patients = patients.to(device)
             subtypes = subtypes.to(device)
+
             with torch.no_grad():
                 similarity, diagnoses = model.test(patients)
 
-                targets = subtypes.tolist()
-                predictions = diagnoses.argmax(dim=-1).tolist()
-                probabilities = func.softmax(diagnoses.detach(), dim=-1).cpu().numpy()
+                # 当前 batch 结果
+                batch_targets = subtypes.detach().cpu().tolist()
+                batch_predictions = diagnoses.argmax(dim=-1).detach().cpu().tolist()
+                batch_probabilities = func.softmax(diagnoses, dim=-1).detach().cpu().numpy()
+                batch_similarity = similarity.detach().cpu().view(-1).numpy()
 
-                for idx in range(len(targets)):
-                    cur = targets[idx]
-                    corrects[cur] += 1 if targets[idx] == predictions[idx] else 0
-                    totals[cur] += 1
+                # 累计整体评估所需内容
+                all_targets.extend(batch_targets)
+                all_predictions.extend(batch_predictions)
+                all_probabilities.append(batch_probabilities)
+                all_similarities.append(batch_similarity)
 
-        corrects = np.array(corrects)
-        totals = np.array(totals)
+                # 统计每个 subtype 的分类正确数 / 总数
+                for t, p in zip(batch_targets, batch_predictions):
+                    totals[t] += 1
+                    if t == p:
+                        corrects[t] += 1
 
-        subtype_accuracy.append(corrects / totals)
+        # 拼接整个测试集的概率和相似度
+        all_probabilities = np.concatenate(all_probabilities, axis=0)
+        all_similarities = np.concatenate(all_similarities, axis=0)
 
-        evaluation = utils.get_performance_evaluation(targets, predictions, probabilities, 'multiple')
+        # 防止除零
+        subtype_acc = np.divide(
+            corrects,
+            totals,
+            out=np.zeros_like(corrects, dtype=np.float64),
+            where=totals > 0
+        )
+        subtype_accuracy.append(subtype_acc)
+
+        # 基于整个测试集计算评估指标
+        evaluation = utils.get_performance_evaluation(
+            all_targets,
+            all_predictions,
+            all_probabilities,
+            'multiple'
+        )
         evaluations.append(evaluation)
+
         print(evaluation)
-        print(f'test average similarity: {similarity.mean():.3f}, std: {similarity.std():.3f}, '
-              f'weight: {Loss_base.weight[0].detach().cpu().numpy()}')
-        if folder_suffix is not None:
-            torch.save(model.state_dict(), f'./model_params/model_params_{cancer}_{folder_suffix}{str(opRound)}.pkl')
+        print(
+            f'test average similarity: {all_similarities.mean():.3f}, '
+            f'std: {all_similarities.std():.3f}, '
+            f'weight: {Loss_base.weight[0].detach().cpu().numpy()}'
+        )
+        # if folder_suffix is not None:
+        #     torch.save(model.state_dict(), f'./model_params/model_params_{cancer}_{folder_suffix}{str(opRound)}.pkl')
 
     performance = {
         'accuracy': utils.get_statistic(evaluations, 'accuracy'),
@@ -168,4 +201,4 @@ if __name__ == '__main__':
     for idx in range(len(subtype_accuracy)):
         print(f'{dataset.number_subtype_dict[idx]}: {subtype_accuracy[idx][0]} ± {subtype_accuracy[idx][1]}')
 
-    utils.format_model_info(model.print_model(), model_kwargs, performance)
+    # utils.format_model_info(model.print_model(), model_kwargs, performance)

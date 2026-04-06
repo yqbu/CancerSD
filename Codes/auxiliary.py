@@ -22,8 +22,8 @@ class BaseDataset(Dataset):
             disorder = torch.randperm(temp_df.shape[0])
 
             train_size = round(temp_df.shape[0] * ratios[0])
-            train_index = disorder[:train_size]
-            test_index = disorder[train_size:]
+            train_index = disorder[:train_size].numpy()
+            test_index = disorder[train_size:].numpy()
 
             train_set.append(temp_df.iloc[train_index, :])
             test_set.append(temp_df.iloc[test_index, :])
@@ -144,7 +144,7 @@ class PatientDataset(BaseDataset):
         super(PatientDataset, self).__init__()
         self.omics_types = omics_types
         cancer = kwargs.get('cancer', 'STAD')
-        root = kwargs.get('root', '../Data')
+        root = kwargs.get('root', '..\\Data')
         if isinstance(cancer, list):
             paths = [os.path.join(root, c) for c in cancer]
         elif isinstance(cancer, str):

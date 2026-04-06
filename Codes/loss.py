@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as func
-from Codes.model import ConfigModel
 
 
 class LabelSmoothingCrossEntropy(nn.Module):
@@ -126,23 +125,47 @@ class CategoryLevelContrastive(nn.Module):
         return torch.mean(partial_loss)
 
 
-class BaseLoss(ConfigModel):
-
+class BaseLoss(nn.Module):
     def __init__(self, task_num=None, coefficient=None):
-        super(BaseLoss, self).__init__()
+        super().__init__()
+
+        if task_num is None and coefficient is None:
+            raise ValueError("Either task_num or coefficient must be provided.")
+
         if task_num is not None:
             self.task_num = task_num
-            coefficient = [1] * self.task_num
+            if coefficient is None:
+                coefficient = [1.0] * self.task_num
+            else:
+                if len(coefficient) != self.task_num:
+                    raise ValueError(
+                        f"Length of coefficient ({len(coefficient)}) "
+                        f"does not match task_num ({self.task_num})"
+                    )
         else:
             self.task_num = len(coefficient)
-        self.config = [('coefficient', np.array([coefficient]))]
-        self.weight = self.create_parameters_list()
+
+        coeff_tensor = torch.tensor([coefficient], dtype=torch.float32)
+
+        self.weight = nn.ParameterList([
+            nn.Parameter(coeff_tensor)
+        ])
 
     def forward(self, losses, params=None):
-        assert losses.shape[-1] == self.task_num
+        if losses.shape[-1] != self.task_num:
+            raise AssertionError(
+                f"Expected losses.shape[-1] == {self.task_num}, "
+                f"but got {losses.shape[-1]}"
+            )
+
         if params is None:
             params = self.parameters()
-        return self.calculate_by_config(losses, params)
+
+        if not isinstance(params, (list, tuple, nn.ParameterList)):
+            params = list(params)
+
+        coefficient = params[0]
+        return torch.sum(coefficient * losses)
 
     def parameters(self):
         return self.weight
