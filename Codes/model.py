@@ -394,10 +394,10 @@ class Generator(ConfigModel):
         return parameters
 
 
-class MODALITY(ConfigModel):
+class CancerSD(ConfigModel):
 
     def __init__(self, num_way, omics_dimensions_dict, embedding_dimension, rank):
-        super(MODALITY, self).__init__()
+        super(CancerSD, self).__init__()
         self.num_way = num_way
         self.omics_dimensions_dict = omics_dimensions_dict
         self.embedding_dimension = embedding_dimension
@@ -581,10 +581,10 @@ class MODALITY(ConfigModel):
         return parameters
 
 
-class MODALITY_meta(nn.Module):
+class CancerSD_meta(nn.Module):
 
     def __init__(self, args, omics_dimensions_dict):
-        super(MODALITY_meta, self).__init__()
+        super(CancerSD_meta, self).__init__()
         self.weight_decay = args.weight_decay
         self.inner_lr = args.inner_lr
         self.outer_lr = args.outer_lr
@@ -599,7 +599,7 @@ class MODALITY_meta(nn.Module):
         self.total_dimension = np.array(list(omics_dimensions_dict.values())).sum()
         self.rank = args.rank
 
-        self.learner = MODALITY(self.num_way, self.omics_dimensions_dict, self.embedding_dimension, self.rank)
+        self.learner = CancerSD(self.num_way, self.omics_dimensions_dict, self.embedding_dimension, self.rank)
 
         self.ilcLoss = ContrastiveLoss(args.tau)
         self.loss_diagnosis = nn.CrossEntropyLoss()

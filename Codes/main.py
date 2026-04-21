@@ -10,7 +10,7 @@ from tqdm import tqdm
 import utils
 from auxiliary import PatientDataset
 from loss import ContrastiveLoss, BaseLoss
-from model import MODALITY
+from model import CancerSD
 
 
 def train(param_lr, data_loader, epoch):
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         training_ratio = 0.8
         train_dataset, test_dataset = dataset.random_split([training_ratio, 1 - training_ratio])
 
-        model = MODALITY(dataset.num_subtype, dataset.omics_dimensions_dict, model_kwargs['embedding_dimension'],
+        model = CancerSD(dataset.num_subtype, dataset.omics_dimensions_dict, model_kwargs['embedding_dimension'],
                          model_kwargs['rank']).to(device)
 
         Loss_contrastive = ContrastiveLoss(model_kwargs['tau']).to(device)

@@ -139,8 +139,7 @@ class BaseLoss(nn.Module):
             else:
                 if len(coefficient) != self.task_num:
                     raise ValueError(
-                        f"Length of coefficient ({len(coefficient)}) "
-                        f"does not match task_num ({self.task_num})"
+                        f"Length of coefficient ({len(coefficient)}) does not match task_num ({self.task_num})"
                     )
         else:
             self.task_num = len(coefficient)
