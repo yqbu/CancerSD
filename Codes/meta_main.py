@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 import utils
 from auxiliary import PatientDataset, MetaTaskDataset
-from model import MODALITY_meta
+from model import CancerSD_meta
 
 
 def main():
@@ -52,7 +52,7 @@ def main():
             ft_query_x = ft_query_x.squeeze(0).to(device)
             ft_query_y = ft_query_y.squeeze(0).to(device)
 
-        meta = MODALITY_meta(args, train_dataset.omics_dimensions_dict).to(device)
+        meta = CancerSD_meta(args, train_dataset.omics_dimensions_dict).to(device)
         meta.clcLoss.to(device)
         print('meta train stage running...')
         for current_epoch in range(args.epoch):
