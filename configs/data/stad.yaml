@@ -1,0 +1,21 @@
+dataset:
+  name: "STAD"
+  root: "processed/STAD"
+  omics:
+    - "methylation"
+    - "miRNA"
+    - "mRNA"
+  subtype_map:
+    EBV: 0
+    MSI: 1
+    GS: 2
+    CIN: 3
+
+  split:
+    train_ratio: 0.8
+    test_ratio: 0.2
+    stratify: true
+
+  missing:
+    enabled: true
+    missing_rate: 0.5

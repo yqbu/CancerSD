@@ -1,0 +1,10 @@
+defaults:
+  - base.yaml
+  - data/stad.yaml
+
+experiment:
+  name: "stad_diagnosis_baseline"
+  tags:
+    - "stad"
+    - "diagnosis"
+    - "baseline"
