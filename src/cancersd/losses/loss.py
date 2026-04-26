@@ -144,17 +144,16 @@ class BaseLoss(nn.Module):
         else:
             self.task_num = len(coefficient)
 
-        coeff_tensor = torch.tensor([coefficient], dtype=torch.float32)
+        coefficient_tensor = torch.tensor([coefficient], dtype=torch.float32)
 
         self.weight = nn.ParameterList([
-            nn.Parameter(coeff_tensor)
+            nn.Parameter(coefficient_tensor)
         ])
 
     def forward(self, losses, params=None):
         if losses.shape[-1] != self.task_num:
             raise AssertionError(
-                f"Expected losses.shape[-1] == {self.task_num}, "
-                f"but got {losses.shape[-1]}"
+                f'Expected losses.shape[-1] == {self.task_num}, but got {losses.shape[-1]}'
             )
 
         if params is None:
@@ -164,6 +163,7 @@ class BaseLoss(nn.Module):
             params = list(params)
 
         coefficient = params[0]
+
         return torch.sum(coefficient * losses)
 
     def parameters(self):
