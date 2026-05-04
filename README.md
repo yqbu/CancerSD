@@ -97,14 +97,14 @@ CancerSD
         │  │  dataloaders.py
         │  │  __init__.py
         │  │
-        │  ├─datasets
-        │  │  │  base.py
-        │  │  │  example_base.py
-        │  │  │  fewshot.py
-        │  │  │  meta_task.py
-        │  │  │  patient.py
-        │  │  │  standard.py
-        │  │  └─__init__.py
+        │  └─datasets
+        │     │  base.py
+        │     │  example_base.py
+        │     │  fewshot.py
+        │     │  meta_task.py
+        │     │  patient.py
+        │     │  standard.py
+        │     └─__init__.py
         │
         ├─engine
         │  │  main.py
@@ -129,11 +129,11 @@ CancerSD
         │  └─__init__.py
         │
         └─utils
-            │  common.py
-            │  enhancement.py
-            │  metrics.py
-            │  plotting.py
-            └─__init__.py
+           │  common.py
+           │  enhancement.py
+           │  metrics.py
+           │  plotting.py
+           └─__init__.py
 ```
 
 ## Usage
