@@ -13,7 +13,7 @@ def build_parser() -> argparse.ArgumentParser:
         '--config',
         type=str,
         default='experiment/stad_diagnosis.yaml',
-        help='Experiment config path relative to configs/'
+        help='experiment config path relative to configs'
     )
 
     parser.add_argument('--seed', type=int, default=42)

@@ -25,11 +25,12 @@ class Trainer:
 
         self.device = torch.device(config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
         self.model.to(self.device)
+        trainer_cfg = config['experiment']['trainer']
 
-        self.epochs = config['trainer']['epochs']
+        self.epochs = trainer_cfg['epochs']
         self.best_metric = float('-inf')
 
-        optim_cfg = config['trainer']['optimizer']
+        optim_cfg = trainer_cfg['optimizer']
         optim_name = optim_cfg.get('name', 'AdamW')
 
         if optim_name == 'Adam':
@@ -47,7 +48,7 @@ class Trainer:
         else:
             raise NotImplementedError(f'Unsupported optimizer: {optim_name}')
 
-        sched_cfg = config['trainer']['scheduler']
+        sched_cfg = trainer_cfg['scheduler']
         sched_name = sched_cfg.get('name', 'CosineAnnealingWarmRestarts')
         if sched_name == 'StepLR':
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=30, gamma=0.1)
@@ -59,7 +60,7 @@ class Trainer:
             raise NotImplementedError(f'Unsupported scheduler: {sched_name}')
 
         self.loss_functions = {
-            'contrastive': ContrastiveLoss(config['trainer']['tau']).to(self.device),
+            'contrastive': ContrastiveLoss(trainer_cfg['hyper_parameters']['tau']).to(self.device),
             'generation': nn.MSELoss(),
             'diagnosis': nn.CrossEntropyLoss(),
             'base': BaseLoss(coefficient=[1, 1, 1]).to(self.device),
@@ -68,19 +69,19 @@ class Trainer:
     def fit(self) -> None:
         for epoch in range(1, self.epochs + 1):
             train_metrics = self.train_epoch(epoch)
-            validation_metrics = self.validate(epoch)
+            # validation_metrics = self.validate(epoch)
 
             print(
                 f"[Epoch {epoch:03d}/{self.epochs}] "
                 f"train_loss={train_metrics['loss']:.4f} "
-                f"val_loss={validation_metrics['loss']:.4f} "
-                f"val_acc={validation_metrics.get('accuracy', 0.0):.4f}"
+                # f"val_loss={validation_metrics['loss']:.4f} "
+                # f"val_acc={validation_metrics.get('accuracy', 0.0):.4f}"
             )
 
         # self.save_checkpoint('last.pt', self.epochs, {'best_metric': self.best_metric})
 
     def train_epoch(self, epoch: int) -> dict[str, Any]:
-        self.model.train()
+        self.model.toggle_stage('train')
 
         total_loss = 0.0
         total_num = 0
@@ -99,7 +100,7 @@ class Trainer:
             batch_size = batch['label'].size(0)
             total_loss += loss['loss_base'].item() * batch_size
             total_num += batch_size
-            correct += (outputs[-1].argmax(dim=-1) == batch['label']).sum().item()
+            correct += (outputs[-1][:batch_size, :].argmax(dim=-1) == batch['label']).sum().item()
 
         self.scheduler.step()
 
@@ -109,10 +110,10 @@ class Trainer:
         }
 
     def forward_batch(self, batch: dict[str, Any]) -> Tensors:
-        return self.model(batch)
+        return self.model(batch['features'])
 
     def compute_loss(self, outputs: Tensors, batch: Any) -> dict[str, torch.Tensor]:
-        samples, labels = batch
+        samples, labels = batch['features'], batch['label']
         complete, incomplete, available, origins, projections, reconstructed, generated, diagnoses = outputs
 
         generation_loss = torch.zeros(1).squeeze().to(self.device)
@@ -147,7 +148,7 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self, epoch: int) -> dict[str, float]:
-        self.model.eval()
+        self.model.toggle_stage('test')
 
         total_loss = 0.0
         total_num = 0
@@ -162,7 +163,7 @@ class Trainer:
             batch_size = batch['label'].size(0)
             total_loss += loss['loss_base'].item() * batch_size
             total_num += batch_size
-            correct += (outputs[-1].argmax(dim=-1) == batch['label']).sum().item()
+            correct += (outputs[-1][:batch_size, :].argmax(dim=-1) == batch['label']).sum().item()
 
         return {
             'loss': total_loss / max(total_num, 1),
@@ -170,17 +171,18 @@ class Trainer:
         }
 
     @torch.no_grad()
-    def test(self, epoch: int) -> dict[str, float]:
-        self.load_checkpoint('best.pt')
+    # def test(self, epoch: int) -> dict[str, float]:
+    def test(self) -> dict[str, float]:
+        # self.load_checkpoint('best.pt')
 
-        self.model.eval()
+        self.model.toggle_stage('test')
 
         total_num = 0
         correct = 0
 
         for batch in self.dataloaders['test']:
             batch = self.move_to_device(batch)
-            outputs = self.forward_batch(batch)
+            outputs = self.model.test(batch)
 
             pred = outputs[-1].argmax(dim=1)
             label = batch['label']

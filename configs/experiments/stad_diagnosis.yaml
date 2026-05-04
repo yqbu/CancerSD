@@ -3,8 +3,26 @@ defaults:
   - data/stad.yaml
 
 experiment:
-  name: "stad_diagnosis_baseline"
+  name: "stad_diagnosis"
   tags:
     - "stad"
     - "diagnosis"
-    - "baseline"
+  trainer:
+    task: "diagnosis"
+    epochs: 115
+    batch_size: 12
+
+    hyper_parameters:
+      rank: 60
+      tau: 0.5
+      embedding_dimension: 512
+
+    optimizer:
+      name: "AdamW"
+      lr: 0.001
+      weight_decay: 0.0001
+
+    scheduler:
+      name: "CosineAnnealingWarmRestarts"
+      T_0: 25
+      T_mult: 2

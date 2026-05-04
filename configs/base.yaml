@@ -16,6 +16,7 @@ paths:
 runtime:
   num_workers: 4
   pin_memory: true
+  drop_last: true
 
 logging:
   level: "INFO"

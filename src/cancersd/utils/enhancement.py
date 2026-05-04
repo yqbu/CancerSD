@@ -3,16 +3,16 @@ import numpy as np
 import pandas as pd
 
 
-def mask(patient_info, omics_dimensions, missing_rate=0.3):
+def mask(patients_info, omics_dimensions, missing_rate=0.3):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.manual_seed(0)
-    num_samples = len(patient_info)
+    num_samples = len(patients_info)
     num_omics = len(omics_dimensions)
 
-    df_index = patient_info.index.values
-    df_column = patient_info.columns.values[:-1]
-    subtypes = patient_info.iloc[:, -1]
+    df_index = patients_info.index.values
+    df_column = patients_info.columns.values[:-1]
+    subtypes = patients_info.iloc[:, -1]
 
     masked_list = []
     missing_count = 0
@@ -32,7 +32,7 @@ def mask(patient_info, omics_dimensions, missing_rate=0.3):
 
     masked_mat = torch.cat(masked_list, dim=0).numpy()
 
-    patient_df = patient_info.fillna(0.0)
+    patient_df = patients_info.fillna(0.0)
     patient_df.replace(0.0, -1, inplace=True)
     patient_mat = patient_df.iloc[:, :-1].to_numpy()
 

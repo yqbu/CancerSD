@@ -5,6 +5,13 @@ dataset:
     - "methylation"
     - "miRNA"
     - "mRNA"
+  diagnosis_file: "patient_diagnose.csv"
+  suffix: ""
+  omics_state: "both"
+  race: ~
+  mode: "include"
+  label_column: "subtype"
+
   subtype_map:
     EBV: 0
     MSI: 1
@@ -12,9 +19,13 @@ dataset:
     CIN: 3
 
   split:
+    seed: 42
     train_ratio: 0.8
+    validation_ratio: 0.0
     test_ratio: 0.2
     stratify: true
+
+  shuffle_result: true
 
   missing:
     enabled: true

@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from datetime import datetime
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CONFIG_ROOT = PROJECT_ROOT / "configs"
+CONFIG_ROOT = PROJECT_ROOT / 'configs'
 
 
 def mkdir(path: Path) -> Path:
@@ -28,8 +30,8 @@ class RuntimePaths:
             mkdir(path)
 
 
-def resolve_path(path_str: str | None, base: Path = PROJECT_ROOT) -> Path:
-    if path_str is None or str(path_str).strip() == "":
+def _resolve_path(path_str: str | None, base: Path = PROJECT_ROOT) -> Path:
+    if path_str is None or str(path_str).strip() == '':
         return base.resolve()
 
     path = Path(path_str)
@@ -39,20 +41,20 @@ def resolve_path(path_str: str | None, base: Path = PROJECT_ROOT) -> Path:
     return (base / path).resolve()
 
 
-def prepare_runtime_paths(cfg: dict[str, Any]) -> RuntimePaths:
-    paths_cfg = cfg.setdefault('paths', {})
+def prepare_runtime_paths(config: dict[str, Any]) -> RuntimePaths:
+    paths_cfg = config.setdefault('paths', {})
 
     project_root_value = paths_cfg.get('project_root')
     if project_root_value  is None:
         project_root = PROJECT_ROOT
     else:
-        project_root = resolve_path(project_root_value, PROJECT_ROOT)
+        project_root = _resolve_path(project_root_value, PROJECT_ROOT)
 
     config_root = project_root / 'configs'
 
-    data_root = resolve_path(paths_cfg.get('data_root', 'data'), project_root)
-    output_root = resolve_path(paths_cfg.get('output_root', 'outputs'), project_root)
-    log_root = resolve_path(paths_cfg.get('log_root', 'logs'), project_root)
+    data_root = _resolve_path(paths_cfg.get('data_root', 'data'), project_root)
+    output_root = _resolve_path(paths_cfg.get('output_root', 'outputs'), project_root)
+    log_root = _resolve_path(paths_cfg.get('log_root', 'logs'), project_root)
 
     runtime_paths = RuntimePaths(
         project_root=project_root,
@@ -64,3 +66,43 @@ def prepare_runtime_paths(cfg: dict[str, Any]) -> RuntimePaths:
     runtime_paths.ensure_dirs()
 
     return runtime_paths
+
+
+@dataclass(frozen=True)
+class ExperimentPaths:
+    run_dir: Path
+    checkpoint_dir: Path
+    metrics_dir: Path
+    figure_dir: Path
+    log_file: Path
+
+    def ensure_dirs(self) -> None:
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.metrics_dir.mkdir(parents=True, exist_ok=True)
+        self.figure_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+
+
+def build_experiment_paths(config: dict[str, Any], runtime_paths) -> ExperimentPaths:
+    experiment_name = config.get('experiment', {}).get('name', 'default_experiment')
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+    run_dir = runtime_paths.output_root / experiment_name / timestamp
+    checkpoint_dir = run_dir / 'checkpoints'
+    metrics_dir = run_dir / 'metrics'
+    figure_dir = run_dir / 'figures'
+
+    log_file = runtime_paths.log_root / experiment_name / timestamp / 'train.log'
+    experiment_paths = ExperimentPaths(
+        run_dir=run_dir,
+        checkpoint_dir=checkpoint_dir,
+        metrics_dir=metrics_dir,
+        figure_dir=figure_dir,
+        log_file=log_file,
+    )
+    experiment_paths.ensure_dirs()
+
+    return experiment_paths
+
+
