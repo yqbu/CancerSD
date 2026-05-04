@@ -37,65 +37,63 @@ CancerSD
 │  requirements.txt
 │
 ├─configs
-│  │  base.yaml
-│  │
+│  │ base.yaml
 │  ├─data
-│  │      stad.yaml
-│  │
+│  │   stad.yaml
 │  └─experiments
-│          stad_diagnosis.yaml
+│      stad_diagnosis.yaml
 │
 ├─data
 │  ├─molecule_selected
-│  │      methylation_selected.npy
-│  │      methylation_selected_original.txt
-│  │      miRNA_selected.npy
-│  │      miRNA_selected_original.txt
-│  │      mRNA_selected.npy
-│  │      mRNA_selected_original.txt
+│  │   methylation_selected.npy
+│  │   methylation_selected_original.txt
+│  │   miRNA_selected.npy
+│  │   miRNA_selected_original.txt
+│  │   mRNA_selected.npy
+│  │   mRNA_selected_original.txt
 │  │
 │  ├─processed
 │  │  └─STAD
-│  │          clinical.tsv
-│  │          methylation.csv
-│  │          methylation_to_patient.tsv
-│  │          miRNA.csv
-│  │          miRNA_max_min.csv
-│  │          miRNA_to_patient.tsv
-│  │          mRNA.csv
-│  │          mRNA_max_min.csv
-│  │          mRNA_to_patient.tsv
-│  │          patient_diagnose.csv
-│  │          patient_lack_methylation.npy
-│  │          patient_lack_miRNA.npy
-│  │          patient_lack_mRNA.npy
+│  │      clinical.tsv
+│  │      methylation.csv
+│  │      methylation_to_patient.tsv
+│  │      miRNA.csv
+│  │      miRNA_max_min.csv
+│  │      miRNA_to_patient.tsv
+│  │      mRNA.csv
+│  │      mRNA_max_min.csv
+│  │      mRNA_to_patient.tsv
+│  │      patient_diagnose.csv
+│  │      patient_lack_methylation.npy
+│  │      patient_lack_miRNA.npy
+│  │      patient_lack_mRNA.npy
 │  │
 │  └─raw
-│          miRNA.zip
-│          mRNA.zip
+│      miRNA.zip
+│      mRNA.zip
 │
 ├─docs
-│      graphical_abstract.pdf
+│  └─graphical_abstract.pdf
 │
 ├─logs
 │  └─stad_diagnosis
 ├─outputs
 │  └─stad_diagnosis
 ├─scripts
-│  │  preprocess_geo.py
-│  │  preprocess_tcga.py
+│  │ preprocess_geo.py
+│  │ preprocess_tcga.py
 │  └─preprocess_utils.py
 │
 └─src
     └─cancersd
-        │  cli.py
-        │  main.py
-        │  __init__.py
+        │ cli.py
+        │ main.py
+        │ __init__.py
         │
         ├─data
-        │  │  auxiliary.py
-        │  │  dataloaders.py
-        │  │  __init__.py
+        │  │ auxiliary.py
+        │  │ dataloaders.py
+        │  │ __init__.py
         │  │
         │  └─datasets
         │     │  base.py
@@ -107,32 +105,32 @@ CancerSD
         │     └─__init__.py
         │
         ├─engine
-        │  │  main.py
-        │  │  meta_main.py
-        │  │  meta_trainer.py
-        │  │  runner.py
-        │  │  trainer.py
+        │  │ main.py
+        │  │ meta_main.py
+        │  │ meta_trainer.py
+        │  │ runner.py
+        │  │ trainer.py
         │  └─__init__.py
         │
         ├─infra
-        │  │  config.py
-        │  │  logger.py
-        │  │  paths.py
+        │  │ config.py
+        │  │ logger.py
+        │  │ paths.py
         │  └─__init__.py
         │
         ├─losses
-        │  │  loss.py
+        │  │ loss.py
         │  └─__init__.py
         │
         ├─models
-        │  │  model.py
+        │  │ model.py
         │  └─__init__.py
         │
         └─utils
-           │  common.py
-           │  enhancement.py
-           │  metrics.py
-           │  plotting.py
+           │ common.py
+           │ enhancement.py
+           │ metrics.py
+           │ plotting.py
            └─__init__.py
 ```
 
