@@ -31,35 +31,109 @@ In this repository, you can find the following folders:
 
 ```
 CancerSD
-│  graphical_abstract.pdf
+│  .gitignore
+│  pyproject.toml
 │  README.md
-│  
-├─Codes
-│  │  auxiliary.py
-│  │  loss.py
-│  │  main.py
-│  │  meta_main.py
-│  │  model.py
-│  │  utils.py
-│  │  
-│  └─data_process
-│          process_GEO.py
-│          process_TCGA.py
-│          process_utils.py
-│          
-└─Data
-    │  cpg_to_genes.json  # map the CpG site to genes
-    │  
-    └─STAD
-            methylation.csv
-            miRNA.csv
-            mRNA.zip  # please unzip this file first
-            miRNA_max_min.csv  # max-min normalization for miRNA expression profile
-            mRNA_max_min.csv  # max-min normalization for mRNA expression profile
-            patient_diagnose.csv  # clinical information for patients
-            patient_lack_methylation.npy
-            patient_lack_miRNA.npy
-            patient_lack_mRNA.npy
+│  requirements.txt
+│
+├─configs
+│  │  base.yaml
+│  │
+│  ├─data
+│  │      stad.yaml
+│  │
+│  └─experiments
+│          stad_diagnosis.yaml
+│
+├─data
+│  ├─molecule_selected
+│  │      methylation_selected.npy
+│  │      methylation_selected_original.txt
+│  │      miRNA_selected.npy
+│  │      miRNA_selected_original.txt
+│  │      mRNA_selected.npy
+│  │      mRNA_selected_original.txt
+│  │
+│  ├─processed
+│  │  └─STAD
+│  │          clinical.tsv
+│  │          methylation.csv
+│  │          methylation_to_patient.tsv
+│  │          miRNA.csv
+│  │          miRNA_max_min.csv
+│  │          miRNA_to_patient.tsv
+│  │          mRNA.csv
+│  │          mRNA_max_min.csv
+│  │          mRNA_to_patient.tsv
+│  │          patient_diagnose.csv
+│  │          patient_lack_methylation.npy
+│  │          patient_lack_miRNA.npy
+│  │          patient_lack_mRNA.npy
+│  │
+│  └─raw
+│          miRNA.zip
+│          mRNA.zip
+│
+├─docs
+│      graphical_abstract.pdf
+│
+├─logs
+│  └─stad_diagnosis
+├─outputs
+│  └─stad_diagnosis
+├─scripts
+│  │  preprocess_geo.py
+│  │  preprocess_tcga.py
+│  └─preprocess_utils.py
+│
+└─src
+    └─cancersd
+        │  cli.py
+        │  main.py
+        │  __init__.py
+        │
+        ├─data
+        │  │  auxiliary.py
+        │  │  dataloaders.py
+        │  │  __init__.py
+        │  │
+        │  ├─datasets
+        │  │  │  base.py
+        │  │  │  example_base.py
+        │  │  │  fewshot.py
+        │  │  │  meta_task.py
+        │  │  │  patient.py
+        │  │  │  standard.py
+        │  │  └─__init__.py
+        │
+        ├─engine
+        │  │  main.py
+        │  │  meta_main.py
+        │  │  meta_trainer.py
+        │  │  runner.py
+        │  │  trainer.py
+        │  └─__init__.py
+        │
+        ├─infra
+        │  │  config.py
+        │  │  logger.py
+        │  │  paths.py
+        │  └─__init__.py
+        │
+        ├─losses
+        │  │  loss.py
+        │  └─__init__.py
+        │
+        ├─models
+        │  │  model.py
+        │  └─__init__.py
+        │
+        └─utils
+            │  common.py
+            │  enhancement.py
+            │  metrics.py
+            │  plotting.py
+            └─__init__.py
 ```
 
 ## Usage
