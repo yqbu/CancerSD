@@ -182,7 +182,7 @@ class Trainer:
 
         for batch in self.dataloaders['test']:
             batch = self.move_to_device(batch)
-            outputs = self.model.test(batch)
+            outputs = self.model.test(batch['features'])
 
             pred = outputs[-1].argmax(dim=1)
             label = batch['label']
