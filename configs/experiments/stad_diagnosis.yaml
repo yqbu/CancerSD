@@ -10,7 +10,7 @@ experiment:
   trainer:
     task: "diagnosis"
     epochs: 115
-    batch_size: 12
+    batch_size: 10
 
     hyper_parameters:
       rank: 60

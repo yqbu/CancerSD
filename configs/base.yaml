@@ -1,15 +1,14 @@
 device: "cuda"
+seed: 42
 
 paths:
   project_root: null
   data:
+    root: "data"
     raw: "data/raw"
     processed: "data/processed"
   output:
     root: "outputs"
-    checkpoints: "outputs/checkpoints"
-    metrics: "outputs/metrics"
-    figures: "outputs/figures"
   log:
     root: "logs"
 

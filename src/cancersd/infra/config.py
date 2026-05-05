@@ -42,9 +42,64 @@ def load_experiment_config(experiment_path: str | Path) -> dict[str, Any]:
         merged = merge_config(merged, part_config)
 
     # load the remaining non-default configurations
-    merged = merge_config(merged, {k: v for k, v in experiment_config.items() if k != "defaults"})
+    merged = merge_config(merged, {k: v for k, v in experiment_config.items() if k != 'defaults'})
 
     return merged
 
 
-__all__ = ['load_experiment_config']
+def set_by_dotted_path(config: dict[str, Any], dotted_key: str, value: Any) -> None:
+    keys = dotted_key.split('.')
+    cur = config
+
+    for key in keys[:-1]:
+        if key not in cur or not isinstance(cur[key], dict):
+            cur[key] = {}
+        cur = cur[key]
+
+    cur[keys[-1]] = value
+
+
+def parse_cli_value(raw: str) -> Any:
+    lower = raw.lower()
+
+    if lower == 'true':
+        return True
+    if lower == 'false':
+        return False
+    if lower in {'none', 'null'}:
+        return None
+
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+
+    return raw
+
+
+def apply_overrides(config: dict[str, Any], overrides: list[str] | None) -> dict[str, Any]:
+    config = deepcopy(config)
+
+    if not overrides:
+        return config
+
+    for item in overrides:
+        if '=' not in item:
+            raise ValueError(
+                f'invalid override format: {item}, '
+                f'expected format: key=value, e.g. trainer.optimizer.lr=0.001'
+            )
+
+        key, raw_value = item.split("=", 1)
+        value = parse_cli_value(raw_value)
+        set_by_dotted_path(config, key, value)
+
+    return config
+
+
+__all__ = ['load_experiment_config', 'set_by_dotted_path', 'parse_cli_value', 'apply_overrides']
