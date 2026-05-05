@@ -20,8 +20,8 @@ dataset:
 
   split:
     seed: 42
-    train_ratio: 0.8
-    validation_ratio: 0.0
+    train_ratio: 0.7
+    validation_ratio: 0.1
     test_ratio: 0.2
     stratify: true
 

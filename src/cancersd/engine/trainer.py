@@ -1,19 +1,39 @@
 from __future__ import annotations
 
 import os
+import io
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, Optional
 import tempfile
+import operator
+import threading
+import queue
 
+from tqdm import tqdm
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+import zstandard as zstd
 
 from cancersd.losses.loss import ContrastiveLoss, BaseLoss
 from cancersd.utils.metrics import get_statistic, get_performance_evaluation
 
 
 Tensors: TypeAlias = tuple[torch.Tensor, ...] | list[torch.Tensor]
+
+
+# class AsyncCheckpointSaver:
+#     def __init__(self, compression_level: int = 3):
+#         self.compressor = zstd.ZstdCompressor(level=compression_level)
+#         self.save_queue = queue.Queue(maxsize=1)
+#         self.save_thread: Optional[threading.Thread] = None
+#         self._stop_event = threading.Event()
+#
+#     def start_background_saver(self):
+#         if self.save_thread is not None and self.save_thread.is_alive():
+#             return
+#
+#         self._stop_event.clear()
 
 
 class Trainer:
@@ -28,7 +48,23 @@ class Trainer:
         trainer_cfg = config['experiment']['trainer']
 
         self.epochs = trainer_cfg['epochs']
-        self.best_metric = float('-inf')
+
+        early_stopping_cfg = self.config['experiment']['trainer'].get('early_stopping', {})
+        self.monitor = early_stopping_cfg.get('monitor', "val_acc")
+        comparison_symbol = early_stopping_cfg.get('comparison', "greater")
+        if comparison_symbol == 'greater':
+            self.comparer = operator.gt
+        elif comparison_symbol == 'less':
+            self.comparer = operator.lt
+        else:
+            raise NotImplementedError(f'unsupported comparison symbol: {comparison_symbol}')
+
+        if 'acc' in self.monitor:
+            self.best_metric = float('-inf')
+        elif 'loss' in self.monitor:
+            self.best_metric = float('inf')
+        else:
+            raise NotImplementedError(f'unsupported monitor: {self.monitor}')
 
         optim_cfg = trainer_cfg['optimizer']
         optim_name = optim_cfg.get('name', 'AdamW')
@@ -42,7 +78,7 @@ class Trainer:
         elif optim_name == 'AdamW':
             self.optimizer = torch.optim.AdamW(
                 self.model.parameters(),
-                lr=optim_cfg.get("lr", 1e-3),
+                lr=optim_cfg.get('lr', 1e-3),
                 weight_decay=optim_cfg.get("weight_decay", 0.0),
             )
         else:
@@ -51,11 +87,17 @@ class Trainer:
         sched_cfg = trainer_cfg['scheduler']
         sched_name = sched_cfg.get('name', 'CosineAnnealingWarmRestarts')
         if sched_name == 'StepLR':
-            self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=30, gamma=0.1)
+            self.scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer, step_size=sched_cfg.get('step_size', 30), gamma=sched_cfg.get('gamma', 0.1)
+            )
         elif sched_name == 'ExponentialLR':
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
+            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                self.optimizer, gamma=sched_cfg.get('gamma', 0.99)
+            )
         elif sched_name == 'CosineAnnealingWarmRestarts':
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=25, T_mult=2)
+            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                self.optimizer, T_0=sched_cfg.get('T_0', 25), T_mult=sched_cfg.get('T_mult', 25)
+            )
         else:
             raise NotImplementedError(f'unsupported scheduler: {sched_name}')
 
@@ -66,29 +108,44 @@ class Trainer:
             'base': BaseLoss(coefficient=[1, 1, 1]).to(self.device),
         }
 
+        self.compressor = zstd.ZstdCompressor(level=3)
+        self.decompressor = zstd.ZstdDecompressor()
+
     def fit(self) -> None:
+        pbar = tqdm(
+            total=self.epochs,
+            desc=f'[Epoch 000/{self.epochs}]',
+            bar_format='{desc} {bar} {elapsed}<{remaining} {postfix}',
+            unit='epoch'
+        )
         for epoch in range(1, self.epochs + 1):
             train_metrics = self.train_epoch(epoch)
-            validation_metrics = self.validate(epoch)
+            validation_metrics = self.validate('validation', epoch)
 
-            monitor = self.config['experiment']['trainer'].get(
-                'early_stopping', {}
-            ).get('monitor', "val_acc")
-            current_metric = validation_metrics.get(
-                monitor, validation_metrics.get('loss', float('inf'))
-            )
+            current_metric = validation_metrics.get(self.monitor, None)
+            if current_metric is None:
+                print(f'no specified indicator was obtained in the {epoch}-th round')
+                continue
 
-            if current_metric > self.best_metric:
+            if self.comparer(current_metric, self.best_metric):
                 self.best_metric = current_metric
                 self.save_checkpoint('best.pt', epoch, validation_metrics)
 
-            print(
-                f'[Epoch {epoch:03d}/{self.epochs}] '
-                f'train_loss={train_metrics["loss"]:.4f} '
-                f'val_loss={validation_metrics["loss"]:.4f} '
-                f'val_acc={validation_metrics.get("accuracy", 0.0):.4f}'
-            )
+            # print(
+            #     f'[Epoch {epoch:03d}/{self.epochs}] '
+            #     f'train_loss={train_metrics["loss"]:.4f} '
+            #     f'val_loss={validation_metrics["val_loss"]:.4f} '
+            #     f'val_acc={validation_metrics.get("val_acc", 0.0):.4f}'
+            # )
+            pbar.set_description(f"[Epoch {epoch:03d}/{self.epochs}]")
+            pbar.set_postfix({
+                'train_loss': f'{train_metrics["loss"]:.4f}',
+                'val_loss': f'{validation_metrics["val_loss"]:.4f}',
+                'val_acc': f'{validation_metrics.get("val_acc", 0.0):.4f}'
+            })
+            pbar.update(1)
 
+        pbar.close()
         self.save_checkpoint('last.pt', self.epochs, {'best_metric': self.best_metric})
 
     def train_epoch(self, epoch: int) -> dict[str, Any]:
@@ -158,14 +215,17 @@ class Trainer:
         }
 
     @torch.no_grad()
-    def validate(self, epoch: int) -> dict[str, float]:
+    def validate(self, loader_name: str, epoch: int) -> dict[str, float]:
         self.model.toggle_stage('test')
 
         total_loss = 0.0
         total_num = 0
         correct = 0
 
-        for batch_idx, batch in enumerate(self.dataloaders['train']):
+        if loader_name not in self.dataloaders:
+            raise ValueError(f'invalid loader: {loader_name}')
+
+        for batch_idx, batch in enumerate(self.dataloaders[loader_name]):
             batch = self.move_to_device(batch)
 
             outputs = self.forward_batch(batch)
@@ -177,8 +237,8 @@ class Trainer:
             correct += (outputs[-1][:batch_size, :].argmax(dim=-1) == batch['label']).sum().item()
 
         return {
-            'loss': total_loss / max(total_num, 1),
-            'accuracy': correct / max(total_num, 1)
+            'val_loss': total_loss / max(total_num, 1),
+            'val_acc': correct / max(total_num, 1)
         }
 
     @torch.no_grad()
@@ -245,7 +305,9 @@ class Trainer:
                     delete=False
             ) as tmp:
                 tmp_name = tmp.name
-                torch.save(ckpt, tmp_name)
+                # stream compression: write directly to a temporary file
+                with self.compressor.stream_writer(tmp) as compressor_stream:
+                    torch.save(ckpt, compressor_stream)
 
             os.replace(tmp_name, path)
 
@@ -276,10 +338,21 @@ class Trainer:
         path = Path(self.paths.checkpoint_dir) / filename
 
         if not path.exists():
-            print(f"Checkpoint not found: {path}")
+            print(f'checkpoint not found: {path}')
             return
 
-        ckpt = torch.load(path, map_location=self.device)
+        with open(path, 'rb') as f:
+            # check whether it is in zstd compression format
+            header = f.read(4)
+            f.seek(0)
+
+            if header == b'\x28\xb5\x2f\xfd':  # zstd magic number
+                with self.decompressor.stream_reader(f) as decompressor_stream:
+                    ckpt = torch.load(decompressor_stream, map_location=self.device)
+            else:
+                # old format, load directly
+                ckpt = torch.load(f, map_location=self.device)
+
         self.model.load_state_dict(ckpt['model'])
         self.optimizer.load_state_dict(ckpt['optimizer'])
         self.scheduler.load_state_dict(ckpt['scheduler'])

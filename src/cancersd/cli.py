@@ -74,7 +74,8 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    config = load_experiment_config(f'experiments/{args.cancer}_diagnosis.yaml')
+    cancer = args.cancer.lower()
+    config = load_experiment_config(f'experiments/{cancer}_diagnosis.yaml')
 
     # common command-line parameter overwriting
     config = apply_named_args(config, args)

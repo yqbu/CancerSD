@@ -15,6 +15,7 @@ experiment:
     early_stopping:
       enable: false
       monitor: "val_loss"
+      comparison: "less"
 
     hyper_parameters:
       rank: 60

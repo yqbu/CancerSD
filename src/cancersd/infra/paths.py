@@ -52,9 +52,9 @@ def prepare_runtime_paths(config: dict[str, Any]) -> RuntimePaths:
 
     config_root = project_root / 'configs'
 
-    data_root = _resolve_path(paths_cfg.get('data_root', 'data'), project_root)
-    output_root = _resolve_path(paths_cfg.get('output_root', 'outputs'), project_root)
-    log_root = _resolve_path(paths_cfg.get('log_root', 'logs'), project_root)
+    data_root = _resolve_path(paths_cfg['data'].get('root', 'data'), project_root)
+    output_root = _resolve_path(paths_cfg['output'].get('root', 'outputs'), project_root)
+    log_root = _resolve_path(paths_cfg['log'].get('root', 'logs'), project_root)
 
     runtime_paths = RuntimePaths(
         project_root=project_root,
