@@ -168,7 +168,7 @@ class Trainer:
             batch_size = batch['label'].size(0)
             total_loss += loss['loss_base'].item() * batch_size
             total_num += batch_size
-            correct += (outputs[-1][:batch_size, :].argmax(dim=-1) == batch['label']).sum().item()
+            correct += (outputs[-1][-batch_size:, :].argmax(dim=-1) == batch['label']).sum().item()
 
         self.scheduler.step()
 
@@ -234,7 +234,7 @@ class Trainer:
             batch_size = batch['label'].size(0)
             total_loss += loss['loss_base'].item() * batch_size
             total_num += batch_size
-            correct += (outputs[-1][:batch_size, :].argmax(dim=-1) == batch['label']).sum().item()
+            correct += (outputs[-1][-batch_size:, :].argmax(dim=-1) == batch['label']).sum().item()
 
         return {
             'val_loss': total_loss / max(total_num, 1),
@@ -308,6 +308,7 @@ class Trainer:
                 # stream compression: write directly to a temporary file
                 with self.compressor.stream_writer(tmp) as compressor_stream:
                     torch.save(ckpt, compressor_stream)
+                # torch.save(ckpt, tmp_name)
 
             os.replace(tmp_name, path)
 
@@ -347,11 +348,13 @@ class Trainer:
             f.seek(0)
 
             if header == b'\x28\xb5\x2f\xfd':  # zstd magic number
-                with self.decompressor.stream_reader(f) as decompressor_stream:
-                    ckpt = torch.load(decompressor_stream, map_location=self.device)
+                decompressed_data = self.decompressor.decompress(f.read())
+                buffer = io.BytesIO(decompressed_data)
+                ckpt = torch.load(buffer, map_location=self.device)
             else:
                 # old format, load directly
                 ckpt = torch.load(f, map_location=self.device)
+        # ckpt = torch.load(path, map_location=self.device)
 
         self.model.load_state_dict(ckpt['model'])
         self.optimizer.load_state_dict(ckpt['optimizer'])
