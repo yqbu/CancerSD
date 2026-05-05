@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Iterator
+
 import numpy as np
 import torch
 from torch import nn
@@ -393,6 +396,36 @@ class Generator(ConfigModel):
         return parameters
 
 
+@dataclass(frozen=True)
+class ModelOutput:
+    complete_index: torch.Tensor
+    incomplete_index: torch.Tensor
+    available: torch.Tensor
+    origins: torch.Tensor
+    projections: tuple[torch.Tensor, torch.Tensor] | torch.Tensor
+    reconstructed: torch.Tensor
+    generated: torch.Tensor
+    diagnoses: torch.Tensor
+
+    def as_tuple(self) -> tuple:
+        return (
+            self.complete_index,
+            self.incomplete_index,
+            self.available,
+            self.origins,
+            self.projections,
+            self.reconstructed,
+            self.generated,
+            self.diagnoses,
+        )
+
+    def __iter__(self) -> Iterator:
+        return iter(self.as_tuple())
+
+    def __getitem__(self, index: int):
+        return self.as_tuple()[index]
+
+
 class CancerSD(ConfigModel):
 
     def __init__(self, num_way, omics_dimensions_dict, embedding_dimension, rank):
@@ -428,62 +461,105 @@ class CancerSD(ConfigModel):
 
         self.parameters_section = self.get_parameters_section()
 
+    def _prepare_inputs(self, patients: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        available = (~torch.isnan(patients)).long()
+        origins = torch.nan_to_num(patients, nan=0.0)
+        missing = 1 - available
+
+        return available, origins, missing
+
+    def _split_complete_incomplete(self, patients: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        complete_index = torch.nonzero(~torch.isnan(patients).any(dim=1), as_tuple=False).reshape(-1)
+        total_indices = torch.arange(patients.size(0), device=patients.device)
+        incomplete_indices = total_indices[~torch.isin(total_indices, complete_index)]
+
+        return complete_index, incomplete_indices
+
+    def _forward_contrastive_task(self, complete_patients: torch.Tensor, params):
+        encoder_start, encoder_end = self.parameters_section['encoder']
+        projector_start, projector_end = self.parameters_section['projector']
+
+        augmented_view = get_omics_masking(complete_patients, self.omics_dimensions_dict)
+        augmented_view_apostrophe = get_omics_masking(complete_patients, self.omics_dimensions_dict)
+
+        embeddings = self.encoder(augmented_view, params[encoder_start:encoder_end])
+        embeddings_apostrophe = self.encoder(augmented_view_apostrophe, params[encoder_start:encoder_end])
+        contrastive_embeddings = (embeddings, embeddings_apostrophe)
+
+        projection = self.projector(embeddings, params[projector_start:projector_end])
+        projection_apostrophe = self.projector(embeddings_apostrophe, params[projector_start:projector_end])
+        projections = (projection, projection_apostrophe)
+
+        return contrastive_embeddings, projections
+
+    def _forward_reconstruction_task(self, complete_patients: torch.Tensor, params):
+        encoder_start, encoder_end = self.parameters_section['encoder']
+        generator_start, generator_end = self.parameters_section['generator']
+
+        patients_cloze = get_omics_masking(complete_patients, self.omics_dimensions_dict)
+        embeddings_cloze = self.encoder(patients_cloze, params[encoder_start:encoder_end])
+        reconstructed_cloze = self.generator(embeddings_cloze, params[generator_start:generator_end])
+
+        return reconstructed_cloze
+
+    def _forward_diagnosis_task(
+            self, features: torch.Tensor, missing: torch.Tensor,
+            contrastive_embeddings: tuple[torch.Tensor, torch.Tensor], params
+    ):
+        encoder_start, encoder_end = self.parameters_section['encoder']
+        generator_start, generator_end = self.parameters_section['generator']
+        diagnostor_start, diagnostor_end = self.parameters_section['diagnostor']
+
+        latents = self.encoder(features, params[encoder_start:encoder_end])
+        generated = self.generator(latents, params[generator_start:generator_end])
+        fusions = features + missing * generated.detach()
+
+        final_embeddings = self.encoder(fusions, params[encoder_start:encoder_end])
+        embeddings, embeddings_apostrophe = contrastive_embeddings
+        final_embeddings = torch.cat([embeddings, embeddings_apostrophe, final_embeddings], dim=0)
+        diagnoses = self.diagnostor(final_embeddings, params[diagnostor_start:diagnostor_end])
+
+        return generated, diagnoses
+
     def forward(self, patients, params=None):
         if len(self.omics_dimensions_dict) == 1:
             return self.single_omics_forward(patients)
 
         if params is None:
             params = self.parameters()
-        encoder_start, encoder_end = self.parameters_section['encoder']
-        projector_start, projector_end = self.parameters_section['projector']
-        generator_start, generator_end = self.parameters_section['generator']
-        diagnostor_start, diagnostor_end = self.parameters_section['diagnostor']
 
-        available = (~torch.isnan(patients)).long()
-        origins = torch.where(torch.isnan(patients), torch.full_like(patients, 0), patients)
-        missing = (available == 0).long()
+        available, origins, missing = self._prepare_inputs(patients)
+        complete_index, incomplete_index = self._split_complete_incomplete(patients)
 
-        complete_index = torch.nonzero(~torch.isnan(patients).any(dim=1)).squeeze()
-        total_indices = torch.arange(patients.shape[0]).to(patients.device)
-        incomplete_index = torch.masked_select(total_indices, torch.isin(total_indices, complete_index, invert=True))
         complete_patients = origins[complete_index]
         if complete_patients.dim() == 1:
             complete_patients = complete_patients.unsqueeze(0)
 
         # contrastive learning tasks
-        augmented_view = get_omics_masking(complete_patients, self.omics_dimensions_dict)
-        augmented_view_apostrophe = get_omics_masking(complete_patients, self.omics_dimensions_dict)
-
-        embeddings = self.encoder(augmented_view, params[encoder_start:encoder_end])
-        embeddings_apostrophe = self.encoder(augmented_view_apostrophe, params[encoder_start:encoder_end])
-        projection = self.projector(embeddings, params[projector_start:projector_end])
-        projection_apostrophe = self.projector(embeddings_apostrophe, params[projector_start:projector_end])
-        projections = [projection, projection_apostrophe]
+        contrastive_embeddings, projections = self._forward_contrastive_task(complete_patients, params)
 
         # masking-and-reconstruction tasks
-        patients_cloze = get_omics_masking(complete_patients, self.omics_dimensions_dict)
-        embeddings_cloze = self.encoder(patients_cloze, params[encoder_start:encoder_end])
-        reconstructed_cloze = self.generator(embeddings_cloze, params[generator_start:generator_end])
+        reconstructed_cloze = self._forward_reconstruction_task(complete_patients, params)
 
         # diagnosis task
-        latents = self.encoder(origins, params[encoder_start:encoder_end])
-        generated = self.generator(latents, params[generator_start:generator_end])
-        fusions = origins + missing * generated.detach()
+        generated, diagnoses = self._forward_diagnosis_task(origins, missing, contrastive_embeddings, params)
 
-        final_embeddings = self.encoder(fusions, params[encoder_start:encoder_end])
-        final_embeddings = torch.cat([embeddings, embeddings_apostrophe, final_embeddings], dim=0)
-        diagnoses = self.diagnostor(final_embeddings, params[diagnostor_start:diagnostor_end])
-
-        return complete_index, incomplete_index, available, origins, \
-            projections, reconstructed_cloze, generated, diagnoses
+        return ModelOutput(
+            complete_index=complete_index,
+            incomplete_index=incomplete_index,
+            available=available,
+            origins=origins,
+            projections=projections,
+            reconstructed=reconstructed_cloze,
+            generated=generated,
+            diagnoses=diagnoses
+        )
 
     def test(self, patients, print_each_sim=True):
         if len(self.omics_dimensions_dict) == 1:
             return self.single_omics_test(patients, print_each_sim)
 
-        available = (~torch.isnan(patients)).long()
-        origins = torch.where(torch.isnan(patients), torch.full_like(patients, 0), patients)
-        missing = (available == 0).long()
+        available, origins, missing = self._prepare_inputs(patients)
 
         latents = self.encoder(origins)
         generated = self.generator(latents)
@@ -518,7 +594,7 @@ class CancerSD(ConfigModel):
         generator_start, generator_end = self.parameters_section['generator']
         diagnostor_start, diagnostor_end = self.parameters_section['diagnostor']
 
-        available = (~torch.isnan(patients)).long()
+        available, _, _ = self._prepare_inputs(patients)
 
         # reconstruction tasks
         embeddings_cloze = self.encoder(patients, params[encoder_start:encoder_end])
@@ -532,8 +608,18 @@ class CancerSD(ConfigModel):
         incomplete_index = torch.tensor([])
         projections = torch.tensor([])
 
-        return complete_index, incomplete_index, available, patients, \
-            projections, reconstructed_cloze, reconstructed_cloze, diagnoses
+        # return complete_index, incomplete_index, available, patients, \
+        #     projections, reconstructed_cloze, reconstructed_cloze, diagnoses
+        return ModelOutput(
+            complete_index=complete_index,
+            incomplete_index=incomplete_index,
+            available=available,
+            origins=patients,
+            projections=projections,
+            reconstructed=reconstructed_cloze,
+            generated=reconstructed_cloze,
+            diagnoses=diagnoses
+        )
 
     def single_omics_test(self, patients, print_each_sim=False):
         latents = self.encoder(patients)
@@ -547,6 +633,15 @@ class CancerSD(ConfigModel):
 
         return similarity, diagnoses
 
+    def impute(self, patients):
+        available, origins, missing = self._prepare_inputs(patients)
+
+        latents = self.encoder(origins)
+        generated = self.generator(latents)
+        fusions = origins + missing * generated
+
+        return fusions
+
     def encode(self, patients, impute=True):
         origins = torch.where(torch.isnan(patients), torch.full_like(patients, 0), patients)
 
@@ -559,17 +654,6 @@ class CancerSD(ConfigModel):
 
         return omics_embeddings, fusion_embeddings
 
-    def impute(self, patients):
-        available = (~torch.isnan(patients)).long()
-        origins = torch.where(torch.isnan(patients), torch.full_like(patients, 0), patients)
-        missing = (available == 0).long()
-
-        latents = self.encoder(origins)
-        generated = self.generator(latents)
-        fusions = origins + missing * generated
-
-        return fusions
-
     def parameters(self):
         parameters = nn.ParameterList()
         parameters += self.encoder.parameters()
@@ -578,221 +662,3 @@ class CancerSD(ConfigModel):
         parameters += self.diagnostor.parameters()
 
         return parameters
-
-
-class CancerSD_meta(nn.Module):
-
-    def __init__(self, args, omics_dimensions_dict):
-        super(CancerSD_meta, self).__init__()
-        self.weight_decay = args.weight_decay
-        self.inner_lr = args.inner_lr
-        self.outer_lr = args.outer_lr
-        self.fine_tuning_lr = args.fine_tuning_lr
-        self.num_way = args.num_way
-        self.num_shot = args.num_shot
-        self.update_step = args.update_step
-        self.ft_update_step = args.ft_update_step
-        self.inner_epoch = args.epoch
-        self.embedding_dimension = args.embedding_dimension
-        self.omics_dimensions_dict = omics_dimensions_dict
-        self.total_dimension = np.array(list(omics_dimensions_dict.values())).sum()
-        self.rank = args.rank
-
-        self.learner = CancerSD(self.num_way, self.omics_dimensions_dict, self.embedding_dimension, self.rank)
-
-        self.ilcLoss = ContrastiveLoss(args.tau)
-        self.loss_diagnosis = nn.CrossEntropyLoss()
-        self.clcLoss = CategoryLevelContrastive()
-
-        self.meta_optimizer = torch.optim.AdamW(self.learner.parameters(), lr=self.outer_lr, weight_decay=self.weight_decay)
-        self.meta_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.meta_optimizer, T_0=1, T_mult=2)
-
-    def get_prototype(self, x, y):
-        embeddings = x.squeeze()
-        embeddings_norm = embeddings / torch.norm(embeddings, p=2, dim=1).unsqueeze(1)
-        em_sort = torch.sort(y)
-        embeddings_norm = embeddings_norm[em_sort.indices]
-
-        num_one = torch.sum(y)
-        num_zero = y.shape[0] - num_one
-
-        em_zero = embeddings_norm[:num_zero]
-        em_one = embeddings_norm[num_zero:]
-
-        proto_zero = em_zero.mean(dim=0).unsqueeze(0)
-        proto_one = em_one.mean(dim=0).unsqueeze(0)
-        proto_embeddings = torch.cat([proto_zero, proto_one], dim=0)
-
-        return proto_embeddings
-
-    def similarity_clc(self, input1, y1, input2, y2):
-        proto_A = self.get_prototype(input1, y1)
-        proto_B = self.get_prototype(input2, y2)
-
-        return self.ilcLoss([proto_A, proto_B])
-
-    def cal_loss(self, results, patients, subtypes, fine_tune_x=None, fine_tune_y=None, clc=False):
-        complete, incomplete, available, origins, projections, reconstructed, generated, diagnoses = results
-
-        recon_loss = 0
-        if len(complete) > 0:
-            recon_loss += func.mse_loss(reconstructed, origins[complete])
-        if len(incomplete) > 0:
-            recon_loss += func.mse_loss((generated * available)[incomplete], origins[incomplete])
-        generation_loss = recon_loss
-
-        if len(complete) >= 2:
-            contrastive_loss = self.ilcLoss(projections)
-        else:
-            contrastive_loss = torch.zeros(1).to(patients.device)
-
-        multi_labels = deepcopy(subtypes)
-        if complete.numel() + incomplete.numel() > 0:
-            multi_labels = torch.cat([subtypes[complete], subtypes[complete], subtypes], dim=0)
-        diagnosis_loss = self.loss_diagnosis(diagnoses, multi_labels)
-
-        total_loss = contrastive_loss + generation_loss + diagnosis_loss
-
-        if clc and fine_tune_x is not None:
-            embeddings1 = self.learner.encode(patients)
-            embeddings2 = self.learner.encode(fine_tune_x)
-            
-            # distribution-based category-level contrastive loss
-            total_loss += self.clcLoss(embeddings1, subtypes, embeddings2, fine_tune_y)
-            
-            # # similarity-based category-level contrastive loss 
-            # total_loss += self.similarity_clc(embeddings1, subtypes, embeddings2, fine_tune_y)
-
-        return total_loss
-
-    def forward(self, support_x, support_y, query_x, query_y, ft_x, ft_y, epoch, multi_label=True):
-        num_task, batch_size, fea_dim = support_x.size()
-
-        losses = [0] * (self.update_step + 1)
-        corrects = [0] * (self.update_step + 1)
-        totals = [0] * (self.update_step + 1)
-
-        parameters = self.learner.parameters()
-
-        clc_flag = True
-        second_derivative_flag = (epoch > self.inner_epoch // 2)
-
-        for i in range(num_task):
-            lr = self.inner_lr
-            results = self.learner(support_x[i], params=None)
-            loss = self.cal_loss(results, support_x[i], support_y[i])
-
-            grads = torch.autograd.grad(loss, parameters, retain_graph=second_derivative_flag,
-                                        create_graph=second_derivative_flag, allow_unused=True)
-            theta = list(map(lambda p: p[1] - lr * p[0] if p[0] is not None else p[1], zip(grads, parameters)))
-
-            with torch.no_grad():
-                results = self.learner(query_x[i], params=parameters)
-                loss_before_update = self.cal_loss(results, query_x[i], query_y[i], ft_x, ft_y, clc=clc_flag)
-                losses[0] += loss_before_update
-
-                temp_labels = torch.cat([query_y[i][results[0]], query_y[i][results[0]], query_y[i]],
-                                        dim=0) if multi_label else query_y[i]
-                correct = torch.eq(results[-1].argmax(dim=1), temp_labels).sum().item()
-                corrects[0] += round(correct, 4)
-                totals[0] += temp_labels.shape[0]
-
-            results = self.learner(query_x[i], params=theta)
-            loss_after_update = self.cal_loss(results, query_x[i], query_y[i], ft_x, ft_y, clc=clc_flag)
-            losses[1] += loss_after_update
-
-            temp_labels = torch.cat([query_y[i][results[0]], query_y[i][results[0]], query_y[i]],
-                                    dim=0) if multi_label else query_y[i]
-            correct = torch.eq(results[-1].argmax(dim=1), temp_labels).sum().item()
-            corrects[1] += round(correct, 4)
-            totals[1] += temp_labels.shape[0]
-
-            for k in range(1, self.update_step):
-                lr *= 0.95
-
-                results = self.learner(support_x[i], params=theta)
-                loss = self.cal_loss(results, support_x[i], support_y[i])
-
-                grads = torch.autograd.grad(loss, theta, retain_graph=second_derivative_flag,
-                                            create_graph=second_derivative_flag, allow_unused=True)
-                theta = list(map(lambda p: p[1] - lr * p[0] if p[0] is not None else p[1], zip(grads, theta)))
-
-                results = self.learner(query_x[i], params=theta)
-                loss_after_update = self.cal_loss(results, query_x[i], query_y[i], ft_x, ft_y, clc=clc_flag)
-
-                losses[k + 1] += loss_after_update
-
-                with torch.no_grad():
-                    temp_labels = torch.cat([query_y[i][results[0]], query_y[i][results[0]], query_y[i]],
-                                            dim=0) if multi_label else query_y[i]
-                    cor = torch.eq(results[-1].argmax(dim=1), temp_labels).sum().item()
-                    corrects[k + 1] += round(cor, 4)
-                    totals[k + 1] += temp_labels.shape[0]
-
-        # Multi-Step Loss Optimization
-        final_loss = deepcopy(losses[0])
-        cur = 0.8
-        for step, step_loss in enumerate(losses[0:]):
-            final_loss += cur * final_loss + (1 - cur) * step_loss
-
-        self.meta_optimizer.zero_grad()
-        final_loss.backward()
-        self.meta_optimizer.step()
-        self.meta_scheduler.step()
-
-        losses_output = [str(round(loss.item() / num_task, 4)) for loss in losses]
-        corrects = np.array(corrects)
-        totals = np.array(totals)
-
-        print(corrects / totals)
-        print(f'ave task loss: {"->".join(losses_output)}')
-
-    def fine_tune(self, support_x, support_y, query_x, query_y, step, fine_tune=True):
-        if not fine_tune:
-            step = 0
-        query_size = query_x.size(0)
-        print(query_size)
-        corrects = [0] * (step + 1)
-        predictions = []
-        probabilities = []
-
-        net = deepcopy(self.learner)
-        net.toggle_stage('test')
-        with torch.no_grad():
-            results = net(query_x)
-            predictions.append(results[-1].argmax(dim=1)[-query_size:])
-            correct = torch.eq(results[-1].argmax(dim=1)[-query_size:], query_y).sum().item()
-            corrects[0] += correct
-        probabilities.append(func.softmax(results[-1], dim=1)[-query_size:])
-
-        params = [
-            {'params': net.encoder.parameters(), 'lr': self.fine_tuning_lr},
-            {'params': net.projector.parameters(), 'lr': self.fine_tuning_lr},
-            {'params': net.generator.parameters(), 'lr': self.fine_tuning_lr},
-            {'params': net.diagnostor.parameters(), 'lr': self.fine_tuning_lr}
-        ]
-
-        optimizer = torch.optim.AdamW(params, weight_decay=5e-4)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=2)
-        for k in tqdm(range(step)):
-            net.toggle_stage('train')
-            results = net(support_x)
-            loss = self.cal_loss(results, support_x, support_y)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-
-            net.toggle_stage('test')
-            with torch.no_grad():
-                _, prediction = net.test(query_x, False)
-                predictions.append(prediction.argmax(dim=-1))
-                cor = torch.eq(prediction.argmax(dim=-1), query_y).sum().item()
-                corrects[k + 1] += cor
-            probabilities.append(func.softmax(prediction.detach(), dim=-1))
-
-        del net
-
-        return (np.array(corrects) / query_size), predictions[-1], probabilities[-1]
-
