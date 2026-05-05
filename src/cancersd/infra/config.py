@@ -59,6 +59,15 @@ def set_by_dotted_path(config: dict[str, Any], dotted_key: str, value: Any) -> N
     cur[keys[-1]] = value
 
 
+def get_by_dotted_path(config: dict[str, Any], dotted_key: str, default: Any = None) -> Any:
+    cur = config
+    for key in dotted_key.split('.'):
+        if not isinstance(cur, dict) or key not in cur:
+            return default
+        cur = cur[key]
+    return cur
+
+
 def parse_cli_value(raw: str) -> Any:
     lower = raw.lower()
 

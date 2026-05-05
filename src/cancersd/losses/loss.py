@@ -125,6 +125,20 @@ class CategoryLevelContrastive(nn.Module):
         return torch.mean(partial_loss)
 
 
+class MaskedMSELoss(nn.Module):
+    def __init__(self, eps: float = 1e-8):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        mask = mask.to(device=pred.device, dtype=pred.dtype)
+
+        squared_error = (pred - target).pow(2)
+        masked_error = squared_error * mask
+
+        return masked_error.sum() / mask.sum().clamp_min(self.eps)
+
+
 class BaseLoss(nn.Module):
     def __init__(self, task_num=None, coefficient=None):
         super().__init__()

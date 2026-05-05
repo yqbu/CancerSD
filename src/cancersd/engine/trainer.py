@@ -15,7 +15,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import zstandard as zstd
 
-from cancersd.losses.loss import ContrastiveLoss, BaseLoss
+from cancersd.losses.loss import MaskedMSELoss, ContrastiveLoss, BaseLoss
 from cancersd.utils.metrics import get_statistic, get_performance_evaluation
 
 
@@ -104,6 +104,7 @@ class Trainer:
         self.loss_functions = {
             'contrastive': ContrastiveLoss(trainer_cfg['hyper_parameters']['tau']).to(self.device),
             'generation': nn.MSELoss(),
+            'masked_generation': MaskedMSELoss(),
             'diagnosis': nn.CrossEntropyLoss(),
             'base': BaseLoss(coefficient=[1, 1, 1]).to(self.device),
         }
@@ -137,7 +138,7 @@ class Trainer:
             #     f'val_loss={validation_metrics["val_loss"]:.4f} '
             #     f'val_acc={validation_metrics.get("val_acc", 0.0):.4f}'
             # )
-            pbar.set_description(f"[Epoch {epoch:03d}/{self.epochs}]")
+            pbar.set_description(f'[Epoch {epoch:03d}/{self.epochs}]')
             pbar.set_postfix({
                 'train_loss': f'{train_metrics["loss"]:.4f}',
                 'val_loss': f'{validation_metrics["val_loss"]:.4f}',
@@ -181,31 +182,54 @@ class Trainer:
         return self.model(batch['features'])
 
     def compute_loss(self, outputs: Tensors, batch: Any) -> dict[str, torch.Tensor]:
-        samples, labels = batch['features'], batch['label']
+        labels = batch['label']
         complete, incomplete, available, origins, projections, reconstructed, generated, diagnoses = outputs
 
-        generation_loss = torch.zeros(1).squeeze().to(self.device)
-        if complete.numel() >= 1:
-            complete = complete.view(-1)
-            generation_loss += self.loss_functions['generation'](reconstructed, origins[complete])
-        if incomplete.numel() >= 1:
-            incomplete = incomplete.view(-1)
-            generation_loss += self.loss_functions['generation']((generated * available)[incomplete],
-                                                                 origins[incomplete])
-        if complete.numel() + incomplete.numel() == 0:
-            generation_loss += self.loss_functions['generation'](reconstructed, origins)
+        complete = complete.reshape(-1)
+        incomplete = incomplete.reshape(-1)
 
-        contrastive_loss = torch.zeros(1).squeeze().to(self.device)
+        has_complete = complete.numel() > 0
+        has_incomplete = incomplete.numel() > 0
+        has_selected = has_complete or has_incomplete
+
+        # generation loss
+        generation_terms = []
+        generation_weights = []
+        if has_complete:
+            gen_loss_complete = self.loss_functions['generation'](reconstructed, origins[complete])
+            generation_terms.append(gen_loss_complete)
+            generation_weights.append(complete.numel())
+        if has_incomplete:
+            gen_loss_incomplete = self.loss_functions['masked_generation'](
+                pred=generated[incomplete],
+                target=origins[incomplete],
+                mask=available[incomplete]
+            )
+            generation_terms.append(gen_loss_incomplete)
+            generation_weights.append(incomplete.numel())
+        if generation_terms:
+            weights = torch.tensor(generation_weights, dtype=origins.dtype, device=origins.device)
+            generation_loss = sum(w * l for w, l in zip(weights, generation_terms)) / weights.sum()
+        else:
+            generation_loss = self.loss_functions['generation'](reconstructed, origins)
+
+        # contrastive loss
+        contrastive_loss = origins.new_zeros(())
         if complete.numel() >= 2:
             contrastive_loss = self.loss_functions['contrastive'](projections)
 
-        if complete.numel() + incomplete.numel() > 0:
-            labels = torch.cat([labels[complete].repeat(2, ), labels], dim=0)
-        diagnosis_loss = self.loss_functions['diagnosis'](diagnoses, labels)
+        # diagnosis loss
+        if has_selected:
+            diagnosis_labels = torch.cat([
+                labels[complete].repeat(2, ), labels
+            ], dim=0)
+        else:
+            diagnosis_labels = labels
+        diagnosis_loss = self.loss_functions['diagnosis'](diagnoses, diagnosis_labels)
 
-        base_loss = self.loss_functions['base'](
-            torch.cat([contrastive_loss.unsqueeze(0), generation_loss.unsqueeze(0), diagnosis_loss.unsqueeze(0)])
-        )
+        # weighted base loss
+        loss_items = torch.stack([contrastive_loss, generation_loss, diagnosis_loss])
+        base_loss = self.loss_functions['base'](loss_items)
 
         return {
             'loss_contrastive': contrastive_loss,

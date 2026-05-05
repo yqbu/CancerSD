@@ -10,7 +10,7 @@ experiment:
   trainer:
     task: "diagnosis"
     epochs: 115
-    batch_size: 10
+    batch_size: 32
 
     early_stopping:
       enable: false
@@ -20,7 +20,7 @@ experiment:
     hyper_parameters:
       rank: 60
       tau: 0.5
-      embedding_dimension: 512
+      embedding_dimension: 64
 
     optimizer:
       name: "AdamW"
