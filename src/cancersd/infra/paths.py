@@ -72,15 +72,15 @@ def prepare_runtime_paths(config: dict[str, Any]) -> RuntimePaths:
 class ExperimentPaths:
     run_dir: Path
     checkpoint_dir: Path
-    metrics_dir: Path
-    figure_dir: Path
+    # metrics_dir: Path
+    # figure_dir: Path
     log_file: Path
 
     def ensure_dirs(self) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self.metrics_dir.mkdir(parents=True, exist_ok=True)
-        self.figure_dir.mkdir(parents=True, exist_ok=True)
+        # self.metrics_dir.mkdir(parents=True, exist_ok=True)
+        # self.figure_dir.mkdir(parents=True, exist_ok=True)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -90,15 +90,15 @@ def build_experiment_paths(config: dict[str, Any], runtime_paths) -> ExperimentP
 
     run_dir = runtime_paths.output_root / experiment_name / timestamp
     checkpoint_dir = run_dir / 'checkpoints'
-    metrics_dir = run_dir / 'metrics'
-    figure_dir = run_dir / 'figures'
+    # metrics_dir = run_dir / 'metrics'
+    # figure_dir = run_dir / 'figures'
 
     log_file = runtime_paths.log_root / experiment_name / timestamp / 'train.log'
     experiment_paths = ExperimentPaths(
         run_dir=run_dir,
         checkpoint_dir=checkpoint_dir,
-        metrics_dir=metrics_dir,
-        figure_dir=figure_dir,
+        # metrics_dir=metrics_dir,
+        # figure_dir=figure_dir,
         log_file=log_file,
     )
     experiment_paths.ensure_dirs()

@@ -46,7 +46,7 @@ class Trainer:
                 weight_decay=optim_cfg.get("weight_decay", 0.0),
             )
         else:
-            raise NotImplementedError(f'Unsupported optimizer: {optim_name}')
+            raise NotImplementedError(f'unsupported optimizer: {optim_name}')
 
         sched_cfg = trainer_cfg['scheduler']
         sched_name = sched_cfg.get('name', 'CosineAnnealingWarmRestarts')
@@ -57,7 +57,7 @@ class Trainer:
         elif sched_name == 'CosineAnnealingWarmRestarts':
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=25, T_mult=2)
         else:
-            raise NotImplementedError(f'Unsupported scheduler: {sched_name}')
+            raise NotImplementedError(f'unsupported scheduler: {sched_name}')
 
         self.loss_functions = {
             'contrastive': ContrastiveLoss(trainer_cfg['hyper_parameters']['tau']).to(self.device),
@@ -69,16 +69,27 @@ class Trainer:
     def fit(self) -> None:
         for epoch in range(1, self.epochs + 1):
             train_metrics = self.train_epoch(epoch)
-            # validation_metrics = self.validate(epoch)
+            validation_metrics = self.validate(epoch)
 
-            print(
-                f"[Epoch {epoch:03d}/{self.epochs}] "
-                f"train_loss={train_metrics['loss']:.4f} "
-                # f"val_loss={validation_metrics['loss']:.4f} "
-                # f"val_acc={validation_metrics.get('accuracy', 0.0):.4f}"
+            monitor = self.config['experiment']['trainer'].get(
+                'early_stopping', {}
+            ).get('monitor', "val_acc")
+            current_metric = validation_metrics.get(
+                monitor, validation_metrics.get('loss', float('inf'))
             )
 
-        # self.save_checkpoint('last.pt', self.epochs, {'best_metric': self.best_metric})
+            if current_metric > self.best_metric:
+                self.best_metric = current_metric
+                self.save_checkpoint('best.pt', epoch, validation_metrics)
+
+            print(
+                f'[Epoch {epoch:03d}/{self.epochs}] '
+                f'train_loss={train_metrics["loss"]:.4f} '
+                f'val_loss={validation_metrics["loss"]:.4f} '
+                f'val_acc={validation_metrics.get("accuracy", 0.0):.4f}'
+            )
+
+        self.save_checkpoint('last.pt', self.epochs, {'best_metric': self.best_metric})
 
     def train_epoch(self, epoch: int) -> dict[str, Any]:
         self.model.toggle_stage('train')
@@ -173,7 +184,7 @@ class Trainer:
     @torch.no_grad()
     # def test(self, epoch: int) -> dict[str, float]:
     def test(self) -> dict[str, float]:
-        # self.load_checkpoint('best.pt')
+        self.load_checkpoint('best.pt')
 
         self.model.toggle_stage('test')
 

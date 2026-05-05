@@ -12,6 +12,10 @@ experiment:
     epochs: 115
     batch_size: 10
 
+    early_stopping:
+      enable: false
+      monitor: "val_loss"
+
     hyper_parameters:
       rank: 60
       tau: 0.5
